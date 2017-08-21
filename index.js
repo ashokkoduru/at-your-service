@@ -22,7 +22,7 @@ app.get('/', function(req, res){
 
 // for Facebook verification
 app.get('/webhook/', function (req, res) {
-	if (req.query['hub.verify_token'] === 'process.env.VERIFICATION_TOKEN') {
+	if (req.query['hub.verify_token'] === 'blooming-forest-41719-ashok-koduru') {
 		res.send(req.query['hub.challenge'])
 	}
 	res.send('Error, wrong token')

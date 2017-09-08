@@ -120,6 +120,144 @@ function sendMovieMetadata(sender, text) {
 
 }
 
+function sendMoviePlot(sender, text) {
+    var options = {
+        method: 'GET',
+        url: 'http://api.themoviedb.org/3/search/movie',
+        qs: {
+            query: String(text),
+            include_adult: true,
+            language: 'en',
+            api_key: TMDb_API_KEY
+        }
+    };
+
+    request(options, function (error, response, body) {
+        if (error) {
+            console.log(response);
+            throw new Error(error);
+        }
+        var jsonbody = JSON.parse(body);
+        if (jsonbody.total_results > 0) {
+            let prepareText = jsonbody.results[0].original_title;
+            if (jsonbody.results[0].release_date) {
+                let releseDate = new Date(jsonbody.results[0].release_date);
+                prepareText += " (" + releseDate.getFullYear() + ")";
+            }
+            sendTextChunks(sender, jsonbody.results[0].overview, prepareText);
+        } else {
+            sendTextMessage(sender, "Duh! Nothing found..");
+        }
+    });
+
+}
+
+function searchMovieByPerson(sender, person_id) {
+    var options = {
+        method: 'GET',
+        url: 'http://api.themoviedb.org/3/discover/movie',
+        qs: {
+            with_cast: String(person_id),
+            include_adult: true,
+            api_key: TMDb_API_KEY
+        }
+    };
+
+    request(options, function (error, response, body) {
+        if (error) {
+            console.log(response);
+            throw new Error(error);
+        }
+        var jsonbody = JSON.parse(body);
+        if (jsonbody.results.length) {
+            let moviesLength = jsonbody.results.length > 4 ? 5 : jsonbody.results.length;
+            for (let i = 0; i < moviesLength; i++) {
+                let suggestion = jsonbody.results[i].original_title;
+                if (jsonbody.results[i].release_date) {
+                    let releseDate = new Date(jsonbody.results[i].release_date);
+                    suggestion += " (" + releseDate.getFullYear() + ")";
+                }
+                sendTextMessage(sender, suggestion);
+            }
+        } else {
+            sendTextMessage(sender, 'No movies by that actor found.. Hard luck!');
+        }
+    });
+}
+
+function sendPersonMoviesData(sender, person) {
+    var options = {
+        method: 'GET',
+        url: 'http://api.themoviedb.org/3/search/person',
+        qs: {
+            query: String(person),
+            include_adult: true,
+            api_key: TMDb_API_KEY
+        }
+    };
+
+    request(options, function (error, response, body) {
+        if (error) {
+            console.log(response);
+            throw new Error(error);
+        }
+        var jsonbody = JSON.parse(body);
+        if (jsonbody.results.length) {
+            searchMovieByPerson(sender, jsonbody.results[0].id);
+        } else {
+            sendTextMessage(sender, "Duh! Didn't get you.. ")
+        }
+    });
+}
+
+function sendTrailerButtonWithTextAndPoster(sender, moviedata, text) {
+    getTrailerLink(moviedata.title).then(function (trailerLink) {
+        let messageData = {
+            "attachment": {
+                "type": "template",
+                "payload": {
+                    "template_type": "button",
+                    "text": text,
+                    "buttons": [{
+                        "type": "web_url",
+                        "url": trailerLink,
+                        "title": "Watch Trailer"
+                    }]
+                }
+            }
+        }
+
+        request({
+            url: 'https://graph.facebook.com/v2.6/me/messages',
+            qs: {
+                access_token: token
+            },
+            method: 'POST',
+            json: {
+                recipient: {
+                    id: sender
+                },
+                message: messageData
+            }
+        }, function (error, response, body) {
+            if (error) {
+                console.log('Error sending messages: ', error)
+            } else if (response.body.error) {
+                console.log('Error: ', response.body.error)
+            }
+            if (moviedata.poster_path) {
+                sendImage(sender, "https://image.tmdb.org/t/p/w500" + moviedata.poster_path);
+            }
+        })
+    }, function () { // error callback; send text and poster without trailer button
+        sendTextMessage(sender, text);
+        if (moviedata.poster_path) {
+            sendImage(sender, "https://image.tmdb.org/t/p/w500" + moviedata.poster_path);
+        }
+    })
+
+}
+
 
 // Spin up the server
 app.listen(app.get('port'), function() {

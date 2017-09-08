@@ -210,6 +210,148 @@ function sendPersonMoviesData(sender, person) {
     });
 }
 
+function selectAtRandom(listOfTexts) {
+    return listOfTexts[Math.floor(Math.random() * listOfTexts.length)];
+}
+
+function changeText(text) {
+    if (text.indexOf('are you') >= 0 || metaphone.compare(text, "are you") || soundEx.compare(text, "are you")) {
+        let returnText;
+        if (text.indexOf('how') >= 0) {
+            returnText = selectAtRandom(["I'm good..\nhow about you?", "Umm.. I'm okay..", "Not bad..", "I'm great..", "I am doing good..", "doing good these days :)\nyou say.."]);
+        } else {
+            returnText = text.replace('are you', 'I am');
+            returnText = returnText.replace('?', '.');
+        }
+        return returnText;
+    } else if (text.indexOf('you are') >= 0) {
+        return text.replace('you are', 'I am');
+    } else if (text === 'weather') {
+        return "since when did you start giving shit about weather?";
+    }
+    return text;
+}
+
+function changeTextNatural(text) {
+    // Although there is an invalid regex exception guard, we might want to go soft on the user and ignore unintentional (or intentional) use of parenthesis:
+    var text2 = text.replace(/\(|\)|\?|\*/g, "");
+    try {
+        if (metaphone.compare(text2, "how are you") || soundEx.compare(text2, "how are you")) {
+            return selectAtRandom(["I'm good..\nhow about you?", "Umm.. I'm okay..", "Not bad..", "I'm great..", "I am doing good..", "doing good these days :)\nyou say.."]);
+        } else if (text2 == "" || metaphone.compare(text2, "hey") || soundEx.compare(text2, "hey") || metaphone.compare(text2, "hello") || soundEx.compare(text2, "hello") || metaphone.compare(text2, "hi") || soundEx.compare(text2, "hi") || metaphone.compare(text2, "help") || soundEx.compare(text2, "help") || metaphone.compare(text2, "hey there") || soundEx.compare(text2, "hey there")) {
+            let punches = ["PS. YOU DO NOT TALK ABOUT FIGHT CLUB", "It's Groundhog day :)", "PS. I've got to return some videotapes!", "Let's put a smile on that face! :D", "Hasta la vista, baby :)", "PS. They call it Royale with cheese.", "Carpe diem. Seize the day, boys.", "PS. I see dead people. :|", "May the Force be with you.", "Life is like a box of chocoloates! :)"];
+            return "Hey! I'm a Messenger bot. I suggest movies, provide movie details, etc\n\nUse #plot, #suggest or #meta with movie name or #starring with person name\n\n#plot gives movie summary, #suggest lists similar movies, #meta, ratings, trailer and poster, #starring lists popular movies of actor\n\n" + selectAtRandom(punches);
+        }
+    } catch (err) {
+        // This is a guard to catch any invalid regex errors.
+        console.log("Caught error; Continuing as if nothing happened: " + err);
+        return "English motherf**ker, do you speak it?!";
+    }
+    return "Doesn't look like anything to me!";
+}
+
+function sendTextChunks(sender, text, title) {
+    if (text.length < 320) {
+        sendTextMessage(sender, text);
+        return;
+    }
+    let sentences = text.split('.');
+    sentences.reduce(function (p, sentence) {
+        return p.then(function () {
+            return sendTextMessagePromise(sender, sentence);
+        });
+    }, sendTextMessagePromise(sender, title)); // initial
+}
+
+function sendTextLists(sender, sentences) {
+    sentences.reduce(function (p, sentence) {
+        return p.then(function () {
+            return sendTextMessagePromise(sender, sentence);
+        });
+    });
+}
+
+function findSimilarMovies(sender, titleText, genre_ids, fromMovieId) {
+    var options = {
+        method: 'GET',
+        url: 'http://api.themoviedb.org/3/discover/movie',
+        qs: {
+            with_genres: genre_ids.join(),
+            sort_by: 'popularity.desc',
+            'vote_average.gte': 5.5,
+            include_video: false,
+            include_adult: true,
+            language: 'en',
+            api_key: TMDb_API_KEY
+        }
+    };
+
+    request(options, function (error, response, body) {
+        if (error) {
+            console.log(response);
+            throw new Error(error);
+        }
+        var jsonbody = JSON.parse(body);
+        var results = jsonbody.results.filter(function (movie) {
+            return movie.id !== fromMovieId && movie.original_language === 'en';
+        });
+        if (results.length > 0) {
+            let length = results.length > 4 ? 5 : results.length;
+            let suggestions = [];
+            for (let i = 0; i < length; i++) {
+                let suggestion = results[i].original_title;
+                if (results[i].release_date) {
+                    let releaseDate = new Date(results[i].release_date);
+                    suggestion += " (" + releaseDate.getFullYear() + ")";
+                }
+                suggestions.push(suggestion);
+            }
+
+            suggestions.reduce(function (p, suggestion) {
+                return p.then(function () {
+                    return sendTextMessagePromise(sender, suggestion);
+                });
+            }, sendTextMessagePromise(sender, titleText));
+
+        } else {
+            sendTextMessage(sender, "Couldn't find similar movies it seems! :(")
+        }
+    });
+}
+
+function sendMovieSuggestions(sender, searchQuery) {
+    var options = {
+        method: 'GET',
+        url: 'http://api.themoviedb.org/3/search/movie',
+        qs: {
+            query: String(searchQuery),
+            include_adult: true,
+            language: 'en',
+            api_key: TMDb_API_KEY
+        }
+    };
+
+    request(options, function (error, response, body) {
+        if (error) {
+            console.log(response);
+            throw new Error(error);
+        }
+        var jsonbody = JSON.parse(body);
+        if (jsonbody.total_results > 0) {
+            let prepareText = "Here are some movies related to " + jsonbody.results[0].original_title;
+            if (jsonbody.results[0].release_date) {
+                let releseDate = new Date(jsonbody.results[0].release_date);
+                prepareText += " (" + releseDate.getFullYear() + ")";
+            }
+            prepareText += ".. Hope you'll enjoy them! :)";
+            findSimilarMovies(sender, prepareText, jsonbody.results[0].genre_ids, jsonbody.results[0].id);
+        } else {
+            sendTextMessage(sender, "Duh! Nothing found..");
+        }
+    });
+
+}
+
 function sendTrailerButtonWithTextAndPoster(sender, moviedata, text) {
     getTrailerLink(moviedata.title).then(function (trailerLink) {
         let messageData = {
